@@ -1,0 +1,397 @@
+G = 6.67430 * 10^(-11); 
+M_body = 5.9722 * 10^(24);                                  % mass of the body where ballistic analysis is being performed (kilograms)
+mu = G * M_body;
+a_body = 6378136.3;                                         % semi-major axis (metres)
+f_inverse = 298.257;                                        % inverse flattening
+f_body = f_inverse^(-1);
+b_body = a_body * (1 - f_body);
+e_first = sqrt(1 - ((b_body)^2 / (a_body)^2)); 
+siderealday = 86164.0905;                                   % sidereal day length (seconds)
+omega = [0; 0; 2 * pi / siderealday];                       % angular velocity vector (rad * second^-1)
+omegadot = [0; 0; 0];                                       % angular acceleration vector (rad * second^-1)
+
+
+p_dry = 101325;                                             % pressure of dry air (pascals)
+molm_dry = 0.028946;                                        % molar mass of dry air (kilogram * mol^-1)
+gamma_dry = 1.4;                                            % adiabatic constant of dry air
+hum_rel = 0;                                                % relative humidity
+hmode = 0;                                                  % humidity calculation mode, 0 for Buck (1996), 1 for Antoine (values from NIST, paper names listed below) 
+T_ref = 288.15;                                             % reference temperature (Kelvin)
+p_water = satvapp(T_ref,hmode);
+p_ref = p_dry + hum_rel * p_water;
+molm_ref = (p_dry/p_ref) * molm_dry + (hum_rel * p_water/p_ref) * 0.01801528;
+gamma_ref = (p_dry/p_ref) * gamma_dry + (hum_rel * p_water/p_ref) * 8/6;
+R = 8.31446261815324;                    
+rho_ref = (molm_ref * p_ref)/(R * T_ref);
+h_ref = sqrt(5.9722*10^24 * 6.67430*10^-11/(9.80665));      % reference altitude (metres)
+h1 = 1.1*10^4;
+h2 = 2*10^4;
+h3 = 3.2*10^4;
+h4 = 4.7*10^4;
+h5 = 5.1*10^4;
+h6 = 7.1*10^4;
+h7 = 84852;
+layers = [0; h1; h2; h3; h4; h5; h6; h7];
+% altitude of atmospheric layers for calculating temperatures (metres)
+% default values model standard atmosphere
+lambda0 = 6.5*10^-3;
+lambda2 = -1*10^-3;
+lambda3 = -2.8*10^-3;
+lambda5 = 2.8*10^-3;
+lambda6 = 2*10^-3;
+lapse = [lambda0; 0; lambda2; lambda3; 0; lambda5; lambda6; 0];
+% adiabatic lapse rate for each layer defined above (Kelvin / kilometre)
+v_wind = [0; 0; 0];
+% placeholder until proper windspeed feature gets sorted
+
+
+m_pounds = 2700;                                  % shell mass (pounds)
+m_proj = m_pounds * 0.45359237;
+d_proj = 0.406;                                   % O/A diameter (metres)
+S_ref = pi * (0.5 * d_proj)^2;
+l_proj = 1.829;                                   % O/A length (metres)
+l_nose = 0.978;                                   % nose length (metres)
+d_tip = 0.0697;                                   % rounded tip diameter (metres)
+S_tip = pi * (0.5 * d_tip)^2;
+d_nozzle = 0;                                     % nozzle diameter (metres)
+S_nozzle = pi * (0.5 * d_nozzle)^2;
+t_burn = 0;                                       % time of burn of base boost / rocket assist system, if applicable (seconds)
+v_fps = 2425;                                     % muzzle velocity (feet * second^-1)
+v_muzzle = v_fps * 0.3048;
+firingazimuth = 150;                              % firing azimuth (degrees)
+firingelevation = 30;                             % firing elevation (degrees)
+alpha = firingazimuth * pi / 180;
+beta = firingelevation * pi / 180;
+horizontalvelocity = v_muzzle * cos(beta);
+vx_ENU = horizontalvelocity * sin(alpha);
+vy_ENU = horizontalvelocity * cos(alpha);
+vz_ENU = v_muzzle * sin(beta);
+v_ENU = [vx_ENU; vy_ENU; vz_ENU];
+
+
+shiplatitude = 30;                                % latitude of the firing platform (degrees) 
+shiplongitude = 30;                               % longitude of the firing platform (degrees)
+phi = shiplatitude * pi / 180;
+lambda = shiplongitude * pi / 180;
+if phi == pi / 2 
+    z = b_body;
+elseif phi == -pi / 2
+    z = -b_body;
+elseif phi == 0
+    z = 0;
+else
+    z = a_body * (1 - e_first^2) * sin(phi) / (sqrt(1 - e_first^2 * (sin(phi))^2));
+end
+if abs(phi) == pi / 2
+    p = 0;
+elseif phi == 0
+    p = a_body;
+else
+    p = a_body * cos(phi) / (sqrt(1 - e_first^2 * (sin(phi))^2));
+end
+x = p * cos(lambda);
+y = p * sin(lambda);
+vtransform = [-sin(lambda) -sin(phi)*cos(lambda) cos(phi)*cos(lambda); cos(lambda) -sin(phi)*sin(lambda) cos(phi)*sin(lambda); 0 cos(phi) sin(phi)];
+v_ECEF = vtransform * v_ENU;
+vx = v_ECEF(1);
+vy = v_ECEF(2);
+vz = v_ECEF(3);
+
+
+t = 0;                                  % initial firing time (seconds)
+S = [x; y; z; vx; vy; vz];
+i = 1;
+timematrix = zeros([1 1000]);
+statematrix = zeros([6 1000]);
+timematrix(:,1) = t;
+statematrix(:,1) = S;
+h = 10^(-9);                            % initial step size
+epsilon_state = 10^(-12);               % allowable truncation error in the RKF4(5) loop, use smaller value for better accuracy but longer computation time
+epsilon_geoalt = 10^(-12);              % allowable error in the geodetic altitude calculator
+
+
+while true
+    while true
+        k1 = h * ODEfunction(t, S, mu, omega, omegadot, T_ref, p_ref, molm_ref, gamma_ref, rho_ref, h_ref, layers, lapse, v_wind, m_proj, d_proj, S_ref, l_proj, l_nose, S_tip, S_nozzle, t_burn);
+        k2 = h * ODEfunction(t + 2/9 * h, S + 2/9 * k1, mu, omega, omegadot, T_ref, p_ref, molm_ref, gamma_ref, rho_ref, h_ref, layers, lapse, v_wind, m_proj, d_proj, S_ref, l_proj, l_nose, S_tip, S_nozzle, t_burn);
+        k3 = h * ODEfunction(t + 1/3 * h, S + 1/12 * k1 + 1/4 * k2, mu, omega, omegadot, T_ref, p_ref, molm_ref, gamma_ref, rho_ref, h_ref, layers, lapse, v_wind, m_proj, d_proj, S_ref, l_proj, l_nose, S_tip, S_nozzle, t_burn);
+        k4 = h * ODEfunction(t + 3/4 * h, S + 69/128 * k1 + (-243/128) * k2 + 135/64 * k3, mu, omega, omegadot, T_ref, p_ref, molm_ref, gamma_ref, rho_ref, h_ref, layers, lapse, v_wind, m_proj, d_proj, S_ref, l_proj, l_nose, S_tip, S_nozzle, t_burn);
+        k5 = h * ODEfunction(t + 1.0 * h, S + (-17/12) * k1 + 27/4 * k2 + (-27/5) * k3 + 16/15 * k4, mu, omega, omegadot, T_ref, p_ref, molm_ref, gamma_ref, rho_ref, h_ref, layers, lapse, v_wind, m_proj, d_proj, S_ref, l_proj, l_nose, S_tip, S_nozzle, t_burn);
+        k6 = h * ODEfunction(t + 5/6 * h, S + 65/432 * k1 + (-5/16) * k2 + 13/16 * k3 + 4/27 * k4 + 5/144 * k5, mu, omega, omegadot, T_ref, p_ref, molm_ref, gamma_ref, rho_ref, h_ref, layers, lapse, v_wind, m_proj, d_proj, S_ref, l_proj, l_nose, S_tip, S_nozzle, t_burn);
+        TE = 1.0 * norm(1/150 * k1 + 0.0 * k2 + (-3/100) * k3 + 16/75 * k4 + 1/20 * k5 + (-6/25) * k6);
+        if TE <= epsilon_state
+            break
+        end
+        h = h * (epsilon_state/TE)^(1/5);
+    end
+    t = t + h;
+    S = S + 47/450 * k1 + 0 * k2 + 12/25 * k3 + 32/225 * k4 + 1/30 * k5 + 6/25 * k6;
+    i = i + 1;
+    timematrix(:,i) = t;
+    statematrix(:,i) = S;
+    h = 0.9 * h * (epsilon_state/TE)^(1/5);
+    [phi, lambda, geoalt] = altfunction(S, a_body, b_body, e_first, epsilon_geoalt);
+if (geoalt < 0) && (t > 0) 
+    break
+end
+end
+
+x = S(1);
+y = S(2);
+z = S(3);
+p = sqrt(x^2 + y^2);
+if p == 0
+    if z > 0
+        decknorm = [0; 0; 1];
+    else
+        decknorm = [0; 0; -1];
+    end
+elseif z == 0
+    decknorm = [x; y; 0];
+else
+    N = a_body / (sqrt(1 - e_first^2 * (sin(phi))^2));
+    if z > 0
+        decknorm = [x; y; sqrt(N^2 - p^2)];
+    else
+        decknorm = [x; y; -sqrt(N^2 - p^2)];
+    end
+end
+v = S(4:6);
+strikingvelocity = norm(v) / 0.3048;
+deckstrikeangle = (180 / pi) * acos(abs(dot(decknorm, v)) / (norm(decknorm) * norm(v)));
+beltstrikeangle = 90 - deckstrikeangle;
+
+
+fprintf('striking velocity: %d fps',strikingvelocity);
+fprintf('striking angle (deck): %d degrees',deckstrikeangle);
+fprintf('striking angle (belt): %d degrees',beltstrikeangle);
+fprintf('impact latitude: %d degrees', (180 / pi) * phi);
+fprintf('impact longitude: %d degrees', (180 / pi) * lambda);
+
+
+plot3(statematrix(1,:), statematrix(2,:), statematrix(3,:));
+hold all;
+[X, Y, Z] = ellipsoid(0,0,0,a_body,a_body,b_body,32);
+C = -abs(Z^0.9);
+surf(X,Y,Z,C);
+axis equal;
+hold off
+ax = gca;
+ax.Clipping = "off";
+
+
+function dSdt = ODEfunction(t, S, mu, omega, omegadot, T_ref, p_ref, molm_ref, gamma_ref, rho_ref, h_ref, layers, lapse, v_wind, m_proj, d_proj, S_ref, l_proj, l_nose, S_tip, S_nozzle, t_burn)
+    r = S(1:3);
+    v = S(4:6);
+    a_g = -mu/((norm(r))^3) * r;
+    a_coriolis = -2 * cross(omega,v);
+    a_centrifugal = -cross(omega,cross(omega,r));
+    a_euler = -cross(omegadot,r);
+    gravalt = norm(r) - h_ref;
+    g = norm(a_g);
+    u = v + v_wind;
+    metcon = atmprop(gravalt, g, T_ref, p_ref, molm_ref, gamma_ref, rho_ref, layers, lapse);
+    rho = metcon(3);
+    v_sound = metcon(4);
+    q = 0.5 * rho * (norm(u))^2;
+    Mach = (norm(u))/v_sound;
+    if Mach < 1
+        C_dbasecoast = 0.12+0.13*Mach^2;
+    else
+        C_dbasecoast = 0.25/Mach;
+    end
+    if t <= t_burn
+        C_dbase = C_dbasecoast*(1-(S_nozzle/S_ref));
+    else
+        C_dbase = C_dbasecoast;
+    end
+    C_dfriction = 0.053 * (l_proj/d_proj) * ((Mach/(q * l_proj))^0.2);
+    C_dnose = (atan(0.5/(l_nose/d_proj)))^1.69 * (1.586 + 1.834/(Mach^2));
+    C_dtip = (pi/4)^1.69 * (1.586 + 1.834/(Mach^2));
+    C_dwave = C_dnose * ((S_ref - S_tip)/S_ref) + C_dtip * (S_tip/S_ref);
+    C_d = C_dbase + C_dfriction + C_dwave;
+    a_drag = (q * C_d * S_ref)/(m_proj * (norm(u))) * u;
+    a = a_g + a_coriolis + a_centrifugal + a_euler + a_drag;
+    dSdt = vertcat(v,a);
+end
+
+
+function [phi, lambda, geoalt] = altfunction(S, a_body, b_body, e_first, epsilon_geoalt)
+    r = S(1:3);
+    x = r(1);
+    y = r(2);
+    p = sqrt(x^2 + y^2);
+    z = abs(r(3));
+    if p == 0
+        if z == 0
+            phi = 0;
+            lambda = 0;
+            geoalt = -b_body;
+        else
+            if z > 0
+                phi = pi;
+            else
+                phi = -pi;
+            end
+            lambda = 0;
+            geoalt = z + (-b_body);
+        end
+    else
+        c = a_body * (e_first)^2;
+        eprime = sqrt(1 - (e_first)^2);
+        zprime = eprime * z;
+        u = 2 * (zprime - c);
+        v = 2 * (zprime + c);
+        tM = (c - zprime) / p;
+        fM = p * (tM)^4 + u * (tM)^3 + v * (tM) - p;
+        t1 = (p - c + zprime) / (p - c + 2 * zprime);
+        t0 = p / (zprime + c);
+        if tM <= 0
+            t = t1;
+        elseif tM >= 1 
+            t = t0;
+        elseif fM >= 0
+            t = t0;
+        else
+            t = t1;
+        end
+        while true
+            deltat = (p - (p * (t)^4 + u * (t)^3 + v * t)) / (4 * p * (t)^3 + 3 * u * (t)^2 + v);
+            lastvalue = t;
+            t = t + deltat;
+            TE = abs(t - lastvalue);
+            if TE <= epsilon_geoalt
+                break
+            end
+        end
+        if r(3) > 0
+            phi = atan2((1 - t^2), (2 * eprime * t));
+        else
+            phi = -atan2((1 - t^2), (2 * eprime * t));
+        end
+        geoalt = ((2 * p * eprime * t) + (z * (1 - t^2)) - (a_body * eprime * (1 + t^2))) / (sqrt((1 + t^2)^2 - (4 * (e_first)^2 * t^2)));
+        lambda = atan2(y,x);
+        if lambda < 0
+            lambda = 2 * pi + lambda;
+        end
+    end
+end
+
+
+% atmospheric properties
+function metcon = atmprop(gravalt, g, T_ref, p_ref, molm_ref, gamma_ref, rho_ref, layers, lapse)
+    R = 8.31446261815324;
+    h1 = layers(2);
+    h2 = layers(3);
+    h3 = layers(4);
+    h4 = layers(5);
+    h5 = layers(6);
+    h6 = layers(7);
+    h7 = layers(8);
+    lambda0 = lapse(1);
+    lambda2 = lapse(3);
+    lambda3 = lapse(4);
+    lambda5 = lapse(6);
+    lambda6 = lapse(7);
+    T1 = T_ref - (lambda0 * h1);
+    T2 = T1;
+    T3 = T2 - (lambda2 * (h3 - h2));
+    T4 = T3 - (lambda3*(h4 - h3));
+    T5 = T4;
+    T6 = T5 - (lambda5 * (h6 - h5));
+    T7 = T6 - (lambda6 * (h7 - h6));
+    p1 = p_ref * ((T_ref - lambda0 * (h1)) / T_ref)^((g * molm_ref) / (R * lambda0));
+    p2 = p1 * exp((-g * molm_ref * (h2 - h1)) / (R * T1));
+    p3 = p2 * ((T2 - lambda2 * (h3 - h2)) / T2)^((g * molm_ref) / (R * lambda2));
+    p4 = p3 * ((T3 - lambda3 * (h4 - h3)) / T3)^((g * molm_ref) / (R * lambda3));
+    p5 = p4 * exp((-g * molm_ref * (h5-h4)) / (R * T4));
+    p6 = p5 * ((T5 - lambda5 * (h6 - h5)) / T5)^((g * molm_ref) / (R * lambda5));
+    p7 = p6 * ((T6 - lambda6 * (h7 - h6)) / T6)^((g * molm_ref) / (R * lambda6));
+    rho1 = (molm_ref * p1) / (R * T1);
+    rho2 = (molm_ref * p2) / (R * T2);
+    rho3 = (molm_ref * p3) / (R * T3);
+    rho4 = (molm_ref * p4) / (R * T4);
+    rho5 = (molm_ref * p5) / (R * T5);
+    rho6 = (molm_ref * p6) / (R * T6);
+    rho7 = (molm_ref * p7) / (R * T7);
+        if gravalt >= h7
+            T = T7;
+            p = p7 * exp((-g * molm_ref * (gravalt - h7)) / (R * T7));
+            rho = rho7 * (p / p7);
+        elseif gravalt >= h6
+            T = T6 - lambda6 * (gravalt - h6);
+            p = p6 * ((T6 - lambda6 * (gravalt - h6)) / T6)^((g * molm_ref) / (R * lambda6));
+            rho = rho6 * (p * T6) / (p6 * T);
+        elseif gravalt >= h5
+            T = T5 - lambda5 * (gravalt - h5);
+            p = p5 * ((T5 - lambda5 * (gravalt - h5)) / T5)^((g * molm_ref) / (R * lambda5));
+            rho = rho5 * (p * T5) / (p5 * T);
+        elseif gravalt >= h4
+            T = T4;
+            p = p4 * exp((-g * molm_ref * (gravalt - h4)) / (R * T4));
+            rho = rho4 * (p / p4);
+        elseif gravalt >= h3
+            T = T3 - lambda3 * (gravalt - h3);
+            p = p3 * ((T3 - lambda3 * (gravalt - h3)) / T3)^((g * molm_ref) / (R * lambda3));
+            rho = rho3 * (p * T3) / (p3 * T);
+        elseif gravalt >= h2
+            T = T2 - lambda2 * (gravalt - h2);
+            p = p2 * ((T2 - lambda2 * (gravalt - h2)) / T2)^((g * molm_ref) / (R * lambda2));
+            rho = rho2 * (p * T2) / (p2 * T);
+        elseif gravalt >= h1
+            T = T1;
+            p = p1 * exp((-g * molm_ref * (gravalt - h1)) / (R * T1));
+            rho = rho1 * (p / p1);
+        else
+            T = T_ref - lambda0 * (gravalt);
+            p = p_ref * ((T_ref - lambda0 * (gravalt)) / T_ref)^((g * molm_ref)/(R * lambda0));
+            rho = rho_ref * (p * T_ref) / (p_ref * T);
+        end
+    v_sound = ((gamma_ref * R * T) / molm_ref)^(1/2);
+    metcon = [T; p; rho; v_sound];
+end
+
+
+function p_sat = satvapp(T,hmode)
+    if hmode == 0
+        if T > 647.096
+                p_sat = 0;
+            elseif T > 273.15
+                p_sat = 611.21*exp((18.678-(T-273.15)/234.5)*((T-273.15)/(-16.01+T)));
+            else
+                p_sat = 611.15*exp((23.036-(T-273.15)/333.7)*((T-273.15)/(6.67+T)));
+        end
+    elseif hmode == 1
+        if T > 647.096
+            p_sat = 0;
+        elseif T > 501.486
+            p_sat = 133.322387415*10^(8.14019-1810.94/(-28.665+T));
+        elseif T > 379
+            p_sat = 10^(8.55959-(643.748/(-198.043+T)));
+        elseif T > 363
+            p_sat = 10^(10.08354-(1663.125/(-45.622+T)));
+        elseif T > 334
+            p_sat = 10^(10.0768-(1659.793/(-45.854+T)));
+        elseif T > 273
+            p_sat = 10^(10.40221-(1838.675/(-31.737+T)));
+        else
+            p_sat = 10^(9.6543-(1435.264/(-64.848+T)));
+        end
+    else
+        p_sat = 0;
+    end
+end
+
+
+% sources
+% Bridgeman, O. C. & Aldrich, E. W. (1964). Vapor Pressure Tables for Water, J. Heat Transfer, 1964, 86, 2, 279-286, https://doi.org/10.1115/1.3687121
+% Fleeman, Eugene L. (4th August, 2006). Tactical Missile Design, Second Edition. AIAA Education Series.
+% Fukushima, Toshio (December, 1999). Fast transform from geocentric to geodetic coordinates. Journal of Geodesy. National Astronomical Observatory, 2-21-1, Ohsawa, Mitaka, Tokyo 181-8588, Japan.
+% Gubkov, A. N.; Fermor, N. A.; et al. (1964). Vapor Pressure of Mono-Poly Systems, Zh. Prikl. Khim. (Leningrad), 1964, 37, 2204-2210
+% ISA standard atmosphere
+% Jekeli, Christopher (August, 2016). Geometric Reference Systems in Geodesy. Ohio State University
+% Liu, C. T. & Lindsay, W. T., Jr. (1970). Vapor Pressure of D2O from 106 to 300 ºC, J. Chem. Eng. Data, 1970, 15, 4, 510-513, https://doi.org/10.1021/je60047a015
+% NavWeaps http://www.navweaps.com/
+% NIST Webbook https://webbook.nist.gov/cgi/cbook.cgi?ID=C7732185&Mask=4&Type=ANTOINE&Plot=on
+% Stull, Daniel R. (1947). Vapor Pressure of Pure Substances. Organic and Inorganic Compounds, Ind. Eng. Chem., 1947, 39, 4, 517-540, https://doi.org/10.1021/ie50448a022
+% TOPEX/Poseidon (1992)
