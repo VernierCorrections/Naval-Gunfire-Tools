@@ -6,6 +6,10 @@ FACEHARD is perhaps the highest fidelity tool in existence for predicting the pe
 
 Finally I cannot in good faith fail to mention that Mr. Okun has sadly passed away in January of 2024. While I never personally interacted with him, I harbor a deep professional respect for his contributions to the naval history community, and many naval historians who did know him personally, such as Jon Parshall, seem to hold Mr. Okun in high regard.
 
+# What Does it Do?
+This calculator provides a forward numeric integration of a projectile fired from a gun, currently using the 4th order RKF method with an embedded 5th order integration for dynamic stepsize control. Boat tail projectiles are not modelled, but base bleed options are included. The projectile must also be radially symmetric, and is assumed to fly at zero angle-of-attack. Elevation or other terrain is not modelled. The gun is assumed to be fired on an object in hydrostatic equilibrium and with a spheroid shape. Projectiles fired on escape trajectories are not modelled. Coriolis, centrifugal, and Euler forces are modelled.
+
+The calculator also contains a software implementation of the International Standard Atmosphere (ISA), as well as the Buck and Antoine equations for the saturation vapour pressure. Drag is also accurately modelled for the class of projectile assumed.
 
 # RKF4(5) User Guide
 This calculator uses the 4th order Runge-Kutta method, with an embedded 5th order method for stepsize and erroor control. To run it, download the file and copy it into your MATLAB installation. Sadly, I cannot promise the file will work in Octave.
