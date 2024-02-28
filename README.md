@@ -9,7 +9,7 @@ Finally I cannot in good faith fail to mention that Mr. Okun has sadly passed aw
 # What Does it Do?
 This calculator provides a forward numeric integration of a projectile fired from a gun, currently using the 4th order RKF method with an embedded 5th order integration for dynamic stepsize control. Boat tail projectiles are not modelled, but base bleed options are included. The projectile must also be radially symmetric, and is assumed to fly at zero angle-of-attack. Elevation or other terrain is not modelled. The gun is assumed to be fired on an object in hydrostatic equilibrium and with a spheroid shape. Projectiles fired on escape trajectories are not modelled. Coriolis, centrifugal, and Euler forces are modelled.
 
-The calculator also contains a software implementation of the International Standard Atmosphere (ISA), as well as the Buck and Antoine equations for the saturation vapour pressure. Drag is also accurately modelled for the class of projectile assumed.
+The calculator also contains a software implementation of the International Standard Atmosphere (ISA), as well as the Buck and Antoine equations for the saturation vapour pressure. A function for converting ECEF coordinates to geodetic coordinates using an interative root-finding algorithim from Fukushima (1999) is provided. Drag forces are also accurately modelled for the class of projectile assumed.
 
 # RKF4(5) User Guide
 This calculator uses the 4th order Runge-Kutta method, with an embedded 5th order method for stepsize and erroor control. To run it, download the file and copy it into your MATLAB installation. Sadly, I cannot promise the file will work in Octave.
@@ -26,7 +26,7 @@ Located in the first block of code. Default values for Earth. Inputs:
 - Options for manually editing the planet angular velocity and angular acceleration vectors (used for Coriolis, centrifugal, and Euler force calculations)
 
 Sources:
-- Jekeli, Christopher (August, 2016). Geometric Reference Systems in Geodesy. Ohio State University.
+- Jekeli, Christopher (August, 2016). *Geometric Reference Systems in Geodesy.* Ohio State University.
 - TOPEX/Poseidon (1992)
 
 ### Atmosphere Parameters
@@ -41,12 +41,12 @@ Second block of code. Default values for ISA. Inputs:
 - Layers modelling temperature lapse and inversions with altitude
 
 Sources:
-- Bridgeman, O. C. & Aldrich, E. W. (1964). Vapor Pressure Tables for Water, J. Heat Transfer, 1964, 86, 2, 279-286, https://doi.org/10.1115/1.3687121
-- Gubkov, A. N.; Fermor, N. A.; et al. (1964). Vapor Pressure of Mono-Poly Systems, Zh. Prikl. Khim. (Leningrad), 1964, 37, 2204-2210
+- Bridgeman, O. C. & Aldrich, E. W. (1964). Vapor Pressure Tables for Water, *J. Heat Transfer,* 1964, 86, 2, 279-286, https://doi.org/10.1115/1.3687121
+- Gubkov, A. N.; Fermor, N. A.; et al. (1964). Vapor Pressure of Mono-Poly Systems, *Zh. Prikl. Khim.* (Leningrad), 1964, 37, 2204-2210
 - ISA standard atmosphere
-- Liu, C. T. & Lindsay, W. T., Jr. (1970). Vapor Pressure of D2O from 106 to 300 ºC, J. Chem. Eng. Data, 1970, 15, 4, 510-513, https://doi.org/10.1021/je60047a015
-- NIST Webbook https://webbook.nist.gov/cgi/cbook.cgi?ID=C7732185&Mask=4&Type=ANTOINE&Plot=on
-- Stull, Daniel R. (1947). Vapor Pressure of Pure Substances. Organic and Inorganic Compounds, Ind. Eng. Chem., 1947, 39, 4, 517-540, https://doi.org/10.1021/ie50448a022
+- Liu, C. T. & Lindsay, W. T., Jr. (1970). Vapor Pressure of D2O from 106 to 300 ºC, *J. Chem. Eng. Data,* 1970, 15, 4, 510-513, https://doi.org/10.1021/je60047a015
+- *NIST Webbook* https://webbook.nist.gov/cgi/cbook.cgi?ID=C7732185&Mask=4&Type=ANTOINE&Plot=on
+- Stull, Daniel R. (1947). Vapor Pressure of Pure Substances. *Organic and Inorganic Compounds, Ind. Eng. Chem.,* 1947, 39, 4, 517-540, https://doi.org/10.1021/ie50448a022
 
 ### Projectile Parameters
 Third block of code. Default values for the American Mk. VII 16"/50 naval rifle. Inputs:
@@ -58,8 +58,8 @@ Third block of code. Default values for the American Mk. VII 16"/50 naval rifle.
 - Firing solution (azimuth and elevation)
 
 Sources: 
-- Fleeman, Eugene L. (4th August, 2006). Tactical Missile Design, Second Edition. AIAA Education Series.
-- NavWeaps http://www.navweaps.com/
+- Fleeman, Eugene L. (4th August, 2006). *Tactical Missile Design, Second Edition.* AIAA Education Series.
+- *NavWeaps* http://www.navweaps.com/
 
 ### Ship Parameters
 Fourth block of code. Also converts the firing ship location and projectile velocity vector into the initial state vector used for the simulation. Inputs:
@@ -67,10 +67,10 @@ Fourth block of code. Also converts the firing ship location and projectile velo
 - Longitude of the firing ship
 
 Sources:
-- Jekeli, Christopher (August, 2016). Geometric Reference Systems in Geodesy. Ohio State University.
+- Jekeli, Christopher (August, 2016). *Geometric Reference Systems in Geodesy.* Ohio State University.
 
 ### Other Sources
-The iterative root-finding algorithm used to convert the projectile's ECEF position into geodetic coordinates are taken from Fukushima, Toshio (December, 1999). Fast transform from geocentric to geodetic coordinates. Journal of Geodesy. National Astronomical Observatory.
+The iterative root-finding algorithm used to convert the projectile's ECEF position into geodetic coordinates are taken from Fukushima, Toshio (December, 1999). Fast transform from geocentric to geodetic coordinates. *Journal of Geodesy.* National Astronomical Observatory.
 
 ## Output
 The following values are provided:
